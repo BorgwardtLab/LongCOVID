@@ -7,7 +7,7 @@ pip install scikit-learn
 pip install pandas  
 
 # Required input data
-The input data required to execute these scripts can be obtained from doi:10.17632/dvf6yvrg4x.1![image](https://user-images.githubusercontent.com/54959592/210764179-206b07c3-1845-44e4-9b4f-dcac18ed5de8.png).
+The input data required to execute these scripts can be obtained from ![image](https://user-images.githubusercontent.com/54959592/210764179-206b07c3-1845-44e4-9b4f-dcac18ed5de8.png).
 Please include these in a folder 'Data'. This should comprise: 
 - Proteomics_Clinical_Data_220902_Acute_plus_healthy_v5.xlsx
 - Proteomics_Clinical_Data_220902_6M_timepoint_v4.xlsx
