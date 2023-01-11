@@ -20,88 +20,6 @@ def logistic_regression(X, X_additional, Y, n_proteins):
         model = sm.Logit(Y, X_tot).fit(disp=0)
         pvals.append(model.pvalues[-1])
     return pvals
-def qqplot(pvals, phenotype, endpoint, alpha=0.05, figsize=[7, 5]):
-    plt.figure(figsize=figsize)
-
-    maxval = 0
-    M = pvals.shape[0]
-    pnull = np.arange(1, M + 1) / M  # uniform distribution for the pvals
-    # Taking the log10 of expected and observed
-    qnull = -np.log10(pnull)
-    qemp = -np.log10(np.sort(pvals))
-
-    # Taking medians and plotting it
-    qnull_median = np.median(qnull)
-    qemp_median = np.median(qemp)
-
-    xl = r'$-log_{10}(P)$ observed'
-    yl = r'$-log_{10}(P)$ expected'
-    if qnull.max() > maxval:
-        maxval = qnull.max()
-    plt.plot(qnull, qemp, 'o', markersize=2)
-    plt.plot([0, qnull.max()], [0, qnull.max()], 'k')
-    plt.ylabel(xl)
-    plt.xlabel(yl)
-
-    betaUp, betaDown, theoreticalPvals = qqplot_bar(M=M, alphalevel=alpha)
-    lower = -np.log10(theoreticalPvals - betaDown)
-    upper = -np.log10(theoreticalPvals + betaUp)
-    plt.fill_between(-np.log10(theoreticalPvals), lower, upper, color="grey", alpha=0.5)
-
-    plt.axis(xmin=-0.15, ymin=-0.15)
-    plt.title(endpoint, fontsize=20)
-    plt.tight_layout()
-    plt.show()
-    return 0
-def qqplot_bar(M=1000000, alphalevel=0.05, distr='log10'):
-    mRange = 10 ** (np.arange(np.log10(0.5), np.log10(M - 0.5) + 0.1, 0.1));  # should be exp or 10**?
-    numPts = len(mRange);
-    betaalphaLevel = np.zeros(numPts);  # down in the plot
-    betaOneMinusalphaLevel = np.zeros(numPts);  # up in the plot
-    betaInvHalf = np.zeros(numPts);
-    for n in range(numPts):
-        m = mRange[n];  # numplessThanThresh=m;
-        betaInvHalf[n] = st.beta.ppf(0.5, m, M - m);
-        betaalphaLevel[n] = st.beta.ppf(alphalevel, m, M - m);
-        betaOneMinusalphaLevel[n] = st.beta.ppf(1 - alphalevel, m, M - m);
-        pass
-    betaDown = betaInvHalf - betaalphaLevel;
-    betaUp = betaOneMinusalphaLevel - betaInvHalf;
-
-    theoreticalPvals = mRange / M;
-    return betaUp, betaDown, theoreticalPvals
-def manhattan_plot(pvals, alpha, phenotype, title):
-    logpval = -np.log10(np.array(pvals).astype(float))
-    plt.figure(figsize=(7, 5))
-    plt.plot(np.arange(len(pvals)), logpval, ls='', marker='.', color='k')
-    plt.tick_params(axis='x',  # changes apply to the x-axis
-                    which='both',  # both major and minor ticks are affected
-                    bottom=False,  # ticks along the bottom edge are off
-                    top=False,  # ticks along the top edge are off
-                    labelbottom=False)  # labels along the bottom edge are off
-
-    plt.hlines(-np.log10(alpha / (2 * len(pvals))), -0.1, len(pvals) + 0.1, color='red')
-    plt.xlabel('proteins')
-    plt.ylabel('-log10(p-values)')
-    plt.title(title, fontsize=20)
-    plt.tight_layout()
-    plt.show()
-def significant_proteins(pvals, proteins, alpha):
-    index = pvals <= (alpha / (2 * len(proteins)))
-    associated_proteins = proteins[index]
-    print('\nASSOCIATED PROTEINS\n----------------\nProtein\t\tp-value')
-    for ass, pv in zip(associated_proteins, pvals[index]):
-        print('{}\t{}'.format(ass, pv))
-def significant_proteins_5per(pvals, alpha):
-    N = int(len(pvals))
-    pvals = pvals.sort_values().iloc[:N]
-    print('lowest p-values:{:.3g},\tthreshold:{:.3g} '.format(pvals.min(), alpha / (2 * N)))
-    corrected_pvals = pvals[pvals <= (alpha / (2 * N))]
-    associated_proteins = corrected_pvals.index.tolist()
-    # print('\nASSOCIATED PROTEINS\n----------------\nProtein\t\tp-value')
-    # for ass, pv in zip(associated_proteins, corrected_pvals.values):
-    # print('{}\t{}'.format(ass, pv))
-    return associated_proteins
 def linear_regression(X, X_additional, Y, n_proteins):
     pvals = []
     for i in range(n_proteins):  # a protein each time
@@ -110,78 +28,8 @@ def linear_regression(X, X_additional, Y, n_proteins):
         model = sm.OLS(Y, X_tot).fit()
         pvals.append(model.pvalues[-1])
     return pvals
-def qq_plot_all(all_pvals, all_title):
-    fig, axes = plt.subplots(nrows=1, ncols=len(all_title),
-                             figsize=(5, 5), sharex=True, sharey=True)
-    M = all_pvals[0].shape[0]
-    pnull = np.arange(1, M + 1) / M
-    qnull = -np.log10(pnull)
-    # qemp = -np.log10(np.sort(pvals))
-    # alpha = 0.5
-    xl = r'$-log_{10}(P)$ observed'
-    yl = r'$-log_{10}(P)$ expected'
-
-    try:
-        for i, ax in enumerate(axes.flatten()):
-            if i >= len(all_pvals):
-                continue
-            qemp = -np.log10(np.sort(all_pvals[i]))
-            ax.plot(qnull, qemp, 'o', markersize=2)
-            ax.plot([0, qnull.max()], [0, qnull.max()], 'k')
-            ax.axis(xmin=-0.15, ymin=-0.15)
-            ax.set_title(all_title[i], fontsize=20)
-    except:
-        i = 0
-        qemp = -np.log10(np.sort(all_pvals[i]))
-        axes.plot(qnull, qemp, 'o', markersize=2)
-        axes.plot([0, qnull.max()], [0, qnull.max()], 'k')
-        axes.axis(xmin=-0.15, ymin=-0.15)
-        axes.set_title(all_title[i], fontsize=20)
 
 
-    fig.supxlabel(xl, fontsize=20, y=0)
-    fig.supylabel(yl, fontsize=20, x=0)
-    #fig.suptitle('Processing: ' + processing, fontsize=30, y=1.05)
-    fig.tight_layout()
-    fig.show()
-def manhattan_plot_all(all_pvals, alpha, all_titles, perc_thres):
-    fig, axes = plt.subplots(nrows=1, ncols=len(all_titles),
-                             figsize=(20, 9), sharex=True, sharey=True)
-
-    try:
-        for i, ax in enumerate(axes.flatten()):
-            if i >= len(all_pvals):
-                continue
-            N = int(len(all_pvals[i]) * perc_thres)
-            pvals_selected = all_pvals[i].sort_values().iloc[:N]
-            pvals_selected = pvals_selected.sort_index()
-            logpval = -np.log10(
-                np.array(pvals_selected).astype(float))
-            ax.plot(np.arange(len(pvals_selected)),
-                    logpval, ls='', marker='.', color='k')
-            ax.hlines(
-                -np.log10(alpha / (2 * len(pvals_selected))),
-                -0.1, len(pvals_selected) + 0.1, color='red')
-            ax.set_title(all_titles[i], fontsize=20)
-    except:
-        i = 0
-        N = int(len(all_pvals[i]) * perc_thres)
-        pvals_selected = all_pvals[i].sort_values().iloc[:N]
-        pvals_selected = pvals_selected.sort_index()
-        logpval = -np.log10(
-            np.array(pvals_selected).astype(float))
-        axes.plot(np.arange(len(pvals_selected)),
-                logpval, ls='', marker='.', color='k')
-        axes.hlines(
-            -np.log10(alpha / (2 * len(pvals_selected))),
-            -0.1, len(pvals_selected) + 0.1, color='red')
-        axes.set_title(all_titles[i], fontsize=20)
-
-    fig.supxlabel('Proteins', fontsize=20, y=0)
-    fig.supylabel(r'$-log_{10}(P)$', fontsize=20, x=0)
-    #fig.suptitle('Processing: {}, top {:.0f}%'.format(processing, perc_thres * 100), fontsize=30, y=1.05)
-    fig.tight_layout()
-    fig.show()
 ###########################################################################################################
 ##########################################################################################################
 # INPUTS (fixed)
@@ -389,7 +237,12 @@ if do_clusterAssociation:
         df_prots = df_prots.loc[np.unique(keep_index)]
 
 
+    # Association covariates only
+    model_Cov = sm.Logit(phenotype, X_additional).fit(disp=0, method='bfgs')
+    pvals_Cov = model_Cov.llr_pvalue
+    pvals.loc['COVs'] = pvals_Cov
 
+    # Association cluster with COVs
     clusters     = df_prots['Group'].unique()
     for this_cl in clusters:
 
@@ -405,6 +258,8 @@ if do_clusterAssociation:
         # Association
         try:
             model = sm.Logit(phenotype, X_tot).fit(disp=0, method='bfgs')
+
+            # Use p-value for whole model here
             pvals.loc[this_cl] = model.llr_pvalue
             print(this_cl + ': ' + str(model.llr_pvalue))
         except:
@@ -412,22 +267,9 @@ if do_clusterAssociation:
             pvals.loc[this_cl] = np.nan
 
 # Organize and save results
-alpha = 0.05
-sig_asso = significant_proteins_5per(pvals, alpha)
-display(Markdown('Associated protein: **{}**'.format(sig_asso)))
 pvals = pvals.sort_values()
 pvals.sort_values().to_csv(os.path.join(output_folder, name  + '_singleSomamer_pvals.csv'))
 
-
-# Plot and save
-perc_thres = 0.05
-this_sig_thresh = alpha/(2*len(pvals))
-qq_plot_all([pvals], [name])
-plt.savefig(os.path.join(output_folder, name  + '_qq_plot.png'))
-manhattan_plot_all([pvals], alpha, [name], perc_thres)
-plt.savefig(os.path.join(output_folder, name + '_manhattan_plot5perc.png'))
-df_threshs.loc[name,'sig thresh'] =  this_sig_thresh
-df_threshs.to_csv(os.path.join(output_folder, name  +'_thresholds.csv'))
 
 
 

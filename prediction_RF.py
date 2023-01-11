@@ -88,13 +88,7 @@ def createSplit(Y, metadata,n_splits = 5, stratifyFor = ['CareSamp']):
         partition['test'+str(split)] = id_tst
         split = split + 1
 
-    try:
-        Y = Y.to_frame()
-    except:
-        print('already DF')
-    labels = dict(zip(Y.index.values, Y.astype(int)[Y.columns[0]].values))
-
-    return partition, labels
+    return partition
 def getData(partition, X, cv):
     X_train = X.loc[partition['train' + str(cv)], :]
     X_val = X.loc[partition['validation' + str(cv)], :]
@@ -307,6 +301,7 @@ feature_dict_df = pd.read_csv('your_feature_dict.csv')
 # All other details
 inputData       = '6M' # Options: '6M', '1M','1Mand6M'
 useClinicalData = True # Option to include/exclude clinical features
+useProtein      = True # Option to include/exclude protein features
 n_splits        = 5
 clf_choice      = 'RF' # Choice of classifier. Options: 'LR' = Logistic regression, 'RF' = Random Forest
 endpoint        = 'PACS_12M'#6M_woDys' # Options: 'PACS_6M_woDys', 'PACS_12M'
@@ -341,7 +336,10 @@ else:
     healthy = 'noHealthy'
     partitionname = endpoint+'_partition_noHealthy'
 if useClinicalData:
-    feature_type = 'ClinicalProteomics'
+    if useProtein:
+        feature_type = 'ClinicalProteomics'
+    else:
+        feature_type = 'Clinical'
 else:
     feature_type = 'Proteomics'
 name_save_all = endpoint+ '_from_'+inputData+feature_type+'_'+ healthy+ '_'+ clf_choice + '_withFCorr'
@@ -382,7 +380,7 @@ cols_clinical = ['Age', 'Sex','Post_Vaccine','Asthma',
 cols_drop_fromFeatures = ['SampleId','Sampling_month','COVID',
                           'Days', 'Patient_Care','COVID19_Severity',
                           'COVID19_Severity_Grade','Index']
-if excludeAcuteCOVID19Features:
+if reducedCols:
     cols_clinical_keep = ['Age', 'Sex','Post_Vaccine','Asthma',
                          'Lung','Diabetes','BMI','Cerebro','Heart',
                          'Hypertonia','Autoimmune_diseases','Malignancy','Kidney','Allergic_disease']
@@ -419,6 +417,26 @@ data_6M      = data_6M.drop(cols_clinical6M + cols_drop_fromFeatures, axis=1)
 if useOnlyMutualProteins:
 
     seqIDs_keep   = []
+    # for this_uniprotID in uniprots_here:
+    #     if '|' in this_uniprotID:
+    #         uni1 = this_uniprotID.split('|')[0]
+    #         uni2 = this_uniprotID.split('|')[0]
+    #         unis_check = [uni1, uni2]
+    #         this_sq = list(somadict.loc[somadict['UniProt ID'] == this_uniprotID,'SeqID'].values)
+    #     else:
+    #         unis_check = [this_uniprotID]
+    #         this_sq = []
+    #
+    #     # Check if in ref
+    #
+    #     for u in unis_check:
+    #         if u in  uniprots_ref:
+    #             this_sq+=list(somadict.loc[somadict['UniProt ID'] == u,'SeqID'].values)
+    #
+    #     for this_sq_i in this_sq:
+    #         new_seqID = 'seq.'+'.'.join(this_sq_i.split('-'))
+    #         if new_seqID not in seqIDs_keep:
+    #             seqIDs_keep.append(new_seqID)
     for s in feature_dict_df.SeqID:
         this_seqID = 'seq.'+('.').join(s.split('-'))
         seqIDs_keep.append(this_seqID)
@@ -446,9 +464,9 @@ for i in range(0,len(ratio1)):
 # Now get the input data used in this run
 serverity = serverity_1M
 if inputData == '1M':
-    data = data_1M
+    data_prot = data_1M
 elif inputData == '6M':
-    data = data_6M
+    data_prot = data_6M
 elif inputData == '1Mand6M':
     cols_6M = [c+'_6M' for c in data_6M.columns]
     data_6M_app = data_6M.copy()
@@ -471,50 +489,55 @@ if usehealthy:
         data_healthy_delta1M6M.columns = cols_1M6M
         data_healthy = pd.concat([data_healthy, data_healthy_app, data_healthy_delta1M6M], axis=1)
 
-    data = data.append(data_healthy)
+    data_prot = data_prot.append(data_healthy)
     data_clin = data_clin_pats.append(data_clin_healthy)
     serverity = serverity.append(serverity_healthy)
 
 # Check data and exclude patients with missing proteomics
-data      = data.dropna()
-data_clin = data_clin.loc[data.index,cols_clinical_keep]
-label     = label.loc[data.index]
+data_prot = data_prot.dropna() # Should not make any differene for our data
+data_clin = data_clin.loc[data_prot.index,cols_clinical_keep]
+label     = label.loc[data_prot.index]
 label     = label.dropna()
-data      = data.loc[label.index]
+data_prot      = data_prot.loc[label.index]
+
+
 
 
 # Exclude highly correlated features or useTopFeatures
 if not useTopFeatures:
 
-    # get correlation coefficients
-    corr = data.corr()
+    if useProtein:
 
-    # Get absolute values for now, drop lower diagonal
-    corr_abs = np.abs(np.triu(corr))
+        # get correlation coefficients
+        corr = data_prot.corr()
 
-    # set diagonal to 0 to ignore
-    np.fill_diagonal(corr_abs, 0)
-    corr_abs_drop = corr_abs.copy()
-    for c in tqdm(range(0,corr_abs.shape[0]-1)):
-        if np.any(corr_abs_drop[c,:]>corr_thresh):
-            corr_abs_drop[c, :] = 0
-            corr_abs_drop[:, c] = 0
-    feat_keep = corr.index[corr_abs_drop.sum(axis = 0)>0]
-    data = data.loc[label.index, feat_keep]
-    print('Retained '+str(len(feat_keep))+' protein features')
+        # Get absolute values for now, drop lower diagonal
+        corr_abs = np.abs(np.triu(corr))
 
-    # Rename features and save
-    new_cols = renameProteins(data.columns, somadict)
-    features_prot = pd.DataFrame(index=data.columns, columns = ['GeneID'])
-    features_prot['GeneID'] = new_cols
-    pd.DataFrame(features_prot).to_csv(os.path.join(output, name_save_all + '_ProtFeatures.csv'))
-    data.columns = new_cols
+        # set diagonal to 0 to ignore
+        np.fill_diagonal(corr_abs, 0)
+        corr_thresh = 0.3
+        corr_abs_drop = corr_abs.copy()
+        for c in tqdm(range(0,corr_abs.shape[0]-1)):
+            if np.any(corr_abs_drop[c,:]>corr_thresh):
+                corr_abs_drop[c, :] = 0
+                corr_abs_drop[:, c] = 0
+        feat_keep = corr.index[corr_abs_drop.sum(axis = 0)>0]
+        data_prot = data_prot.loc[label.index, feat_keep]
+        print('Retained '+str(len(feat_keep))+' protein features')
 
+        # Rename features and save
+        new_cols = renameProteins(data_prot.columns, somadict)
+        features_prot = pd.DataFrame(index=data_prot.columns, columns = ['GeneID'])
+        features_prot['GeneID'] = new_cols
+        pd.DataFrame(features_prot).to_csv(os.path.join(output, name_save_all + '_ProtFeatures.csv'))
+        data_prot.columns = new_cols
 else:
 
     # Rename features and save
-    new_cols = renameProteins(data.columns, somadict)
-    data.columns = new_cols
+    new_cols = renameProteins(data_prot.columns, somadict)
+    data_prot.columns = new_cols
+
 
 
 # Get splits or load
@@ -523,28 +546,32 @@ if createNewSplit:
     metadata['Patient_Care'] = serverity.Patient_Care.map({'Hospitalized': 1, 'Outpatient': 0, 'Mild':0, 'Healthy':0})
     metadata  = metadata.loc[label.index]
     data_clin = data_clin.loc[label.index]
-    partition, labels = createSplit(label,metadata, n_splits = n_splits, stratifyFor = ['age_group','Patient_Care'])
+    partition = createSplit(label,metadata, n_splits = n_splits, stratifyFor = ['age_group','Patient_Care'])
     np.save(os.path.join(partition_path, partitionname + '_partition.npy'), partition)
-    np.save(os.path.join(partition_path, partitionname + '_labelDic.npy'), labels)
+
 else:
     partition = np.load(os.path.join(partition_path, partitionname + '_partition.npy'),
                         allow_pickle='TRUE').item()
-    labels = np.load(os.path.join(partition_path, partitionname + '_labelDic.npy'),
-                         allow_pickle='TRUE').item()
 
 
 # Prepare outputs
 if useTopFeatures:
-    top_proteins = list(set(top_features) & set(data.columns))
-    data = data.loc[:, top_proteins]
+    top_proteins = list(set(top_features) & set(data_prot.columns))
+    data_prot = data_prot.loc[:, top_proteins]
 
     top_clinical = list(set(top_features) & set(data_clin.columns))
     data_clin = data_clin.loc[:, top_clinical]
 
 if useClinicalData:
-    features = list(data.columns)+list(data_clin.columns)
+    if useProtein:
+        features = list(data_prot.columns)+list(data_clin.columns)
+    else:
+        features = list(data_clin.columns)
 else:
-    features = list(data.columns)
+    if useProtein:
+        features = list(data_prot.columns)
+    else:
+        raise('Must include either clinical or protein data!')
 
 pd.DataFrame(features).to_csv(os.path.join(output,name_save_all+'_features.csv'))
 
@@ -559,27 +586,28 @@ for cv in range(0, n_splits):
     name_save = name_save_all + '_cv'+ str(cv)
 
     # Scale protein data
-    if data.shape[1]>0:
-        sc = StandardScaler()
-        npx_reform_train = pd.DataFrame(sc.fit_transform(
-            data.loc[partition['train' + str(cv)], :].values),
-            index=data.loc[partition['train' + str(cv)], :].index,
-            columns=data.columns)
+    if useProtein:
+        if data_prot.shape[1]>0:
+            sc = StandardScaler()
+            npx_reform_train = pd.DataFrame(sc.fit_transform(
+                data_prot.loc[partition['train' + str(cv)], :].values),
+                index=data_prot.loc[partition['train' + str(cv)], :].index,
+                columns=data_prot.columns)
 
-        npx_reform_val = pd.DataFrame(sc.transform(
-            data.loc[partition['validation' + str(cv)], :].values),
-            index=data.loc[partition['validation' + str(cv)], :].index,
-            columns=data.columns)
+            npx_reform_val = pd.DataFrame(sc.transform(
+                data_prot.loc[partition['validation' + str(cv)], :].values),
+                index=data_prot.loc[partition['validation' + str(cv)], :].index,
+                columns=data_prot.columns)
 
-        npx_reform_test = pd.DataFrame(sc.transform(
-            data.loc[partition['test' + str(cv)], :].values),
-            index=data.loc[partition['test' + str(cv)], :].index,
-            columns=data.columns)
+            npx_reform_test = pd.DataFrame(sc.transform(
+                data_prot.loc[partition['test' + str(cv)], :].values),
+                index=data_prot.loc[partition['test' + str(cv)], :].index,
+                columns=data_prot.columns)
 
-        data_norm = npx_reform_train.append(npx_reform_val).append(npx_reform_test)
-        data_norm = data_norm.loc[data.index, :]
-    else:
-        data_norm = pd.DataFrame(index=data.loc[partition['test' + str(cv)], :].index)
+            data_prot_norm = npx_reform_train.append(npx_reform_val).append(npx_reform_test)
+            data_prot_norm = data_prot_norm.loc[data_prot.index, :]
+        else:
+            data_prot_norm = pd.DataFrame(index=data_prot.loc[partition['test' + str(cv)], :].index)
 
     # Clinical variables (if used)
     if useClinicalData:
@@ -593,17 +621,17 @@ for cv in range(0, n_splits):
         sc2 = StandardScaler()
         clin_cont_train = pd.DataFrame(sc2.fit_transform(
             data_clin_cont.loc[partition['train' + str(cv)], :].values),
-            index=data.loc[partition['train' + str(cv)], :].index,
+            index=data_clin.loc[partition['train' + str(cv)], :].index,
             columns=data_clin_cont.columns)
 
         clin_cont_val = pd.DataFrame(sc2.transform(
             data_clin_cont.loc[partition['validation' + str(cv)], :].values),
-            index=data.loc[partition['validation' + str(cv)], :].index,
+            index=data_clin.loc[partition['validation' + str(cv)], :].index,
             columns=data_clin_cont.columns)
 
         clin_cont_test = pd.DataFrame(sc2.transform(
             data_clin_cont.loc[partition['test' + str(cv)], :].values),
-            index=data.loc[partition['test' + str(cv)], :].index,
+            index=data_clin.loc[partition['test' + str(cv)], :].index,
             columns=data_clin_cont.columns)
 
         # Combine again
@@ -618,7 +646,13 @@ for cv in range(0, n_splits):
         data_clin_norm['BMI'] = data_clin_norm['BMI'].fillna(0)
 
         # Combine clinical and protein features
-        data_norm = pd.concat([data_norm, data_clin_norm], axis=1)
+        if useProtein:
+            data_norm = pd.concat([data_prot_norm, data_clin_norm.loc[data_prot_norm.index]], axis=1)
+        else:
+            data_norm = data_clin_norm
+    else:
+        if useProtein:
+            data_norm = data_prot_norm
 
     # Prediction
     if useTopFeatures:
@@ -626,7 +660,7 @@ for cv in range(0, n_splits):
     else:
         data_in = data_norm.copy()
     best_est_cv, X_train, X_val,X_test = \
-        getPredictionSingleFold_nooutput(cv, partition, labels,  clf_choice, data_in)
+        getPredictionSingleFold_nooutput(cv, partition, label,  clf_choice, data_in)
 
     # Save model and scalers
     try:
@@ -642,8 +676,8 @@ for cv in range(0, n_splits):
 
     # Evaluate performance (all features)
     tn, fp, fn, tp, accuracy, precision, recall, \
-    roc_auc, aps, f1 = perf_90recall(best_est_cv, X_test, [labels[p] for p in X_test.index])
-    prev = np.mean([labels[p] for p in X_test.index])
+    roc_auc, aps, f1 = perf_90recall(best_est_cv, X_test, [label[p] for p in X_test.index])
+    prev = np.mean([label[p] for p in X_test.index])
     df_performance.loc[cv,:] = [prev,roc_auc,aps,aps/prev]
 
 
@@ -690,6 +724,7 @@ for cv in range(0, n_splits):
 
 # Save results to df
 df_performance.to_csv(os.path.join(output,name_save_all +'_performance.csv'))
+
 
 
 
