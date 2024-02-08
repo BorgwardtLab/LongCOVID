@@ -25,3 +25,6 @@ We provide the data splits used in ***partitions***. Relevant label dictionaries
 Run the file ***prediction_RF.py*** to generate model predictions, 
 association analysis either for individual proteomic features, or clusters thereof can be obtained using ***associationAnalysis.py***, and ***associationClusters.py*** respectively. 
 In ***combineInterpreations.py*** we combine the SHAP analysis results of multiple cross validation folds. 
+
+# Acknowledgements
+This project has received funding from the European Union's Horizon 2020 research and innovation programme under the Marie Sklodowska-Curie grant agreement No 813533 (K.B.). 
